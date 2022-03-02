@@ -1,6 +1,6 @@
 # Telekinesis-Demo
 
-##### E - Pickup
+##### E - Pickup (Up to 3 items)
 ##### LMB - Throw
 ##### WSAD - Move
  
