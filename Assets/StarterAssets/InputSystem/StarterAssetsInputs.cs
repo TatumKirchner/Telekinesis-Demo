@@ -1,17 +1,22 @@
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM && STARTER_ASSETS_PACKAGES_CHECKED
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Interactions;
 #endif
 
 namespace StarterAssets
 {
 	public class StarterAssetsInputs : MonoBehaviour
 	{
+		PlayerInput playerInput;
 		[Header("Character Input Values")]
 		public Vector2 move;
 		public Vector2 look;
 		public bool jump;
 		public bool sprint;
+		public bool fire;
+		public bool fireHeld;
+		public bool pickup;
 
 		[Header("Movement Settings")]
 		public bool analogMovement;
@@ -23,28 +28,35 @@ namespace StarterAssets
 #endif
 
 #if ENABLE_INPUT_SYSTEM && STARTER_ASSETS_PACKAGES_CHECKED
-		public void OnMove(InputValue value)
+        private void Awake()
+        {
+            playerInput = new PlayerInput();
+			playerInput.Player.Enable();
+			playerInput.Player.Jump.performed += Jump;
+			playerInput.Player.Sprint.performed += Sprint;
+			playerInput.Player.Pickup.performed += Pickup;
+        }
+
+        private void Update()
+        {
+            move = playerInput.Player.Move.ReadValue<Vector2>();
+			look = playerInput.Player.Look.ReadValue<Vector2>();
+        }
+
+		void Jump(InputAction.CallbackContext context)
 		{
-			MoveInput(value.Get<Vector2>());
+			JumpInput(context.performed);
+        }
+
+		void Sprint(InputAction.CallbackContext context)
+        {
+			sprint = !sprint;
 		}
 
-		public void OnLook(InputValue value)
-		{
-			if(cursorInputForLook)
-			{
-				LookInput(value.Get<Vector2>());
-			}
-		}
-
-		public void OnJump(InputValue value)
-		{
-			JumpInput(value.isPressed);
-		}
-
-		public void OnSprint(InputValue value)
-		{
-			SprintInput(value.isPressed);
-		}
+		void Pickup(InputAction.CallbackContext context)
+        {
+			pickup = !pickup;
+        }
 #else
 	// old input sys if we do decide to have it (most likely wont)...
 #endif
@@ -69,6 +81,21 @@ namespace StarterAssets
 		{
 			sprint = newSprintState;
 		}
+
+		public void FireInput(bool newFireState)
+        {
+			fire = newFireState;
+        }
+
+		public void FireInputHeld(bool newFireState)
+        {
+			fireHeld = newFireState;
+        }
+
+		public void PickupInput(bool newPickupState)
+        {
+			pickup = newPickupState;
+        }
 
 #if !UNITY_IOS || !UNITY_ANDROID
 
