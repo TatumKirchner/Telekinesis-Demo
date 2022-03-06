@@ -29,11 +29,17 @@ public class Telekinesis : MonoBehaviour
     [Tooltip("How much force is added to the object when being fired.")]
     [SerializeField] float throwForce;
 
+    Animator animator;
+    int animIdPickup;
+    int animIdThrow;
+    int holdingObjectLayerId;
+    int pickupObjectLayerId;
     PlayerInput playerInput;
     private float movementSpeed;
     Camera mainCamera;
     List<Rigidbody> pickedUpObjects;
     bool isHolding = false;
+    bool throwOne = false;
 
     private void Awake()
     {
@@ -41,12 +47,18 @@ public class Telekinesis : MonoBehaviour
         playerInput.Player.Enable();
         playerInput.Player.Fire.performed += Fire;
         playerInput.Player.Pickup.performed += Pickup;
+        playerInput.Player.Pickup.canceled += PickupCancel;
     }
 
     private void Start()
     {
         mainCamera = Camera.main;
         pickedUpObjects = new List<Rigidbody>();
+        animator = GetComponent<Animator>();
+        animIdPickup = Animator.StringToHash("Pickup");
+        animIdThrow = Animator.StringToHash("Throw");
+        holdingObjectLayerId = LayerMask.NameToLayer("HoldingObject");
+        pickupObjectLayerId = LayerMask.NameToLayer("Pickup");
     }
 
     // When the pickup button is pressed and a pickup object is within range, add it to the list.
@@ -61,11 +73,18 @@ public class Telekinesis : MonoBehaviour
                 {
                     if (pickedUpObjects.Count < maxPickup)
                     {
+                        animator.SetLayerWeight(1, 1);
+                        animator.SetBool(animIdPickup, true);
                         pickedUpObjects.Add(rb);
                     }
                 }
             }
         }
+    }
+
+    void PickupCancel(InputAction.CallbackContext contex)
+    {
+        animator.SetBool(animIdPickup, false);
     }
 
     // Check around the player for a pickup object. If one is found return it, if not return null.
@@ -132,7 +151,7 @@ public class Telekinesis : MonoBehaviour
                     else
                     {
                         // Change the layer so they are not picked up by the overlap sphere.
-                        pickedUpObjects[i].gameObject.layer = LayerMask.NameToLayer("HoldingObject");
+                        pickedUpObjects[i].gameObject.layer = holdingObjectLayerId;
 
                         // Turn gravity off and add some drag so the objects fly to the hold position smoothly.
                         pickedUpObjects[i].useGravity = false;
@@ -151,7 +170,7 @@ public class Telekinesis : MonoBehaviour
                     if (Vector3.Distance(pickedUpObjects[i].position, holdPositions[i].position) >= maxHoldDistance)
                     {
                         // Change their layer back to pickup so they can be picked up again.
-                        pickedUpObjects[i].gameObject.layer = LayerMask.NameToLayer("Pickup");
+                        pickedUpObjects[i].gameObject.layer = pickupObjectLayerId;
 
                         // Remove the constraints and resume simulating physics.
                         pickedUpObjects[i].constraints = RigidbodyConstraints.None;
@@ -166,21 +185,22 @@ public class Telekinesis : MonoBehaviour
         }
     }
 
-    // Fire picked up objects depending on input.
-    void Fire(InputAction.CallbackContext context)
+    IEnumerator Throw()
     {
-        if (context.interaction is PressInteraction)
+        yield return new WaitForSeconds(0.70f);
+        if (throwOne)
         {
             // Fire just one object
             if (pickedUpObjects.Count > 0)
             {
+                throwOne = false;
                 // Create a temporary reference to the object to be fired.
                 // That way we can remove it from the list so it is not being held anymore.
                 Rigidbody rb = pickedUpObjects[0];
                 pickedUpObjects.RemoveAt(0);
 
                 // Set its layer back to Pickup so it can be picked up again.
-                rb.gameObject.layer = LayerMask.NameToLayer("Pickup");
+                rb.gameObject.layer = pickupObjectLayerId;
 
                 // Remove its constraints and start simulating physics again.
                 rb.constraints = RigidbodyConstraints.None;
@@ -199,8 +219,9 @@ public class Telekinesis : MonoBehaviour
                     isHolding = false;
             }
         }
-        else if (context.interaction is HoldInteraction)
+        else
         {
+            throwOne = false;
             // Fire all held objects.
             if (pickedUpObjects.Count > 0)
             {
@@ -210,7 +231,7 @@ public class Telekinesis : MonoBehaviour
                 for (int i = 0; i < pickedUpObjects.Count; i++)
                 {
                     // Reset the layer back to Pickup so the objects can be picked up again.
-                    pickedUpObjects[i].gameObject.layer = LayerMask.NameToLayer("Pickup");
+                    pickedUpObjects[i].gameObject.layer = pickupObjectLayerId;
 
                     // Remove the constraints and start simulating physics again.
                     pickedUpObjects[i].constraints = RigidbodyConstraints.None;
@@ -228,11 +249,66 @@ public class Telekinesis : MonoBehaviour
                 pickedUpObjects.Clear();
             }
         }
+
+        animator.SetBool(animIdThrow, false);
+    }
+
+    public void SetAnimatorWeight(int weight)
+    {
+        animator.SetLayerWeight(1, weight);
+    }
+
+    // Fire picked up objects depending on input.
+    void Fire(InputAction.CallbackContext context)
+    {
+        if (pickedUpObjects.Count > 0)
+        {
+            if (context.interaction is PressInteraction)
+            {
+                throwOne = true;
+            }
+            else if (context.interaction is HoldInteraction)
+            {
+                throwOne = false;
+            }
+            animator.SetLayerWeight(1, 1);
+            animator.SetBool(animIdThrow, true);
+            StartCoroutine(Throw());
+        }
+    }
+
+    bool IsAnimationPlaying(Animator anim, int layer, int state)
+    {
+        
+        if (anim.GetCurrentAnimatorStateInfo(layer).Equals(state) && anim.GetCurrentAnimatorStateInfo(layer).normalizedTime < 1f)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
 
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, overlapSphereRadius);
+    }
+
+    private void OnDisable()
+    {
+        playerInput.Player.Disable();
+        playerInput.Player.Fire.performed -= Fire;
+        playerInput.Player.Pickup.performed -= Pickup;
+        playerInput.Player.Pickup.canceled -= PickupCancel;
+    }
+
+    private void OnDestroy()
+    {
+        playerInput.Player.Disable();
+        playerInput.Player.Fire.performed -= Fire;
+        playerInput.Player.Pickup.performed -= Pickup;
+        playerInput.Player.Pickup.canceled -= PickupCancel;
     }
 }
