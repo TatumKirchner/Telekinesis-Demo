@@ -284,7 +284,7 @@ AnimatorState:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Standing 1H Magic Attack 01
+  m_Name: Pickup
   m_Speed: 2
   m_CycleOffset: 0
   m_Transitions:
@@ -662,7 +662,7 @@ AnimatorState:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Standing 2H Magic Attack 02
+  m_Name: Throw
   m_Speed: 2
   m_CycleOffset: 0
   m_Transitions:

@@ -47,7 +47,6 @@ public class Telekinesis : MonoBehaviour
         playerInput.Player.Enable();
         playerInput.Player.Fire.performed += Fire;
         playerInput.Player.Pickup.performed += Pickup;
-        playerInput.Player.Pickup.canceled += PickupCancel;
     }
 
     private void Start()
@@ -64,25 +63,29 @@ public class Telekinesis : MonoBehaviour
     // When the pickup button is pressed and a pickup object is within range, add it to the list.
     void Pickup(InputAction.CallbackContext context)
     {
-        if (pickedUpObjects.Count <= maxPickup)
+        if (!IsAnimationPlaying(animator, 1, animIdThrow) && !IsAnimationPlaying(animator, 1, animIdPickup))
         {
-            GameObject tmp = GetPickupObject();
-            if (tmp != null)
+            if (pickedUpObjects.Count <= maxPickup)
             {
-                if (tmp.TryGetComponent(out Rigidbody rb))
+                GameObject tmp = GetPickupObject();
+                if (tmp != null)
                 {
-                    if (pickedUpObjects.Count < maxPickup)
+                    if (tmp.TryGetComponent(out Rigidbody rb))
                     {
-                        animator.SetLayerWeight(1, 1);
-                        animator.SetBool(animIdPickup, true);
-                        pickedUpObjects.Add(rb);
+                        if (pickedUpObjects.Count < maxPickup)
+                        {
+                            StartCoroutine(SmoothSetLayerWeight(1, 0.25f, 1));
+                            animator.SetBool(animIdPickup, true);
+                            pickedUpObjects.Add(rb);
+                        }
                     }
                 }
             }
         }
     }
 
-    void PickupCancel(InputAction.CallbackContext contex)
+    // when the pickup button is no longer being pressed set the animation bool to false.
+     public void PickupCancel()
     {
         animator.SetBool(animIdPickup, false);
     }
@@ -253,34 +256,61 @@ public class Telekinesis : MonoBehaviour
         animator.SetBool(animIdThrow, false);
     }
 
+    // method for the animation clip to call.
     public void SetAnimatorWeight(int weight)
     {
-        animator.SetLayerWeight(1, weight);
+        if (pickedUpObjects.Count <= 0)
+        {
+            StartCoroutine(SmoothSetLayerWeight(weight, 0.25f, 1));
+        }
+    }
+
+    /// <summary>
+    /// Lerp the <c>layer</c> weight to <c>endValue</c> over the <c>duration</c>.
+    /// </summary>
+    /// <param name="endValue">The value we end at.</param>
+    /// <param name="duration">How long it take to get to the end value.</param>
+    /// <param name="layer">The layer we want to adjust the weight of.</param>
+    /// <returns></returns>
+    IEnumerator SmoothSetLayerWeight(float endValue, float duration, int layer)
+    {
+        float time = 0.0f;
+        float startValue = animator.GetLayerWeight(layer);
+        while (time < duration)
+        {
+            float newWeight = Mathf.Lerp(startValue, endValue, time / duration);
+            animator.SetLayerWeight(layer, newWeight);
+            time += Time.deltaTime;
+            yield return null;
+        }
+        animator.SetLayerWeight(layer, endValue);
     }
 
     // Fire picked up objects depending on input.
     void Fire(InputAction.CallbackContext context)
     {
-        if (pickedUpObjects.Count > 0)
+        if (!IsAnimationPlaying(animator, 1, animIdPickup) && !IsAnimationPlaying(animator, 1, animIdThrow))
         {
-            if (context.interaction is PressInteraction)
+            if (pickedUpObjects.Count > 0)
             {
-                throwOne = true;
+                if (context.interaction is PressInteraction)
+                {
+                    throwOne = true;
+                }
+                else if (context.interaction is HoldInteraction)
+                {
+                    throwOne = false;
+                }
+                //animator.SetLayerWeight(1, 1);
+                animator.SetBool(animIdThrow, true);
+                StartCoroutine(Throw());
             }
-            else if (context.interaction is HoldInteraction)
-            {
-                throwOne = false;
-            }
-            animator.SetLayerWeight(1, 1);
-            animator.SetBool(animIdThrow, true);
-            StartCoroutine(Throw());
         }
     }
 
     bool IsAnimationPlaying(Animator anim, int layer, int state)
     {
-        
-        if (anim.GetCurrentAnimatorStateInfo(layer).Equals(state) && anim.GetCurrentAnimatorStateInfo(layer).normalizedTime < 1f)
+        if (anim.GetCurrentAnimatorStateInfo(layer).shortNameHash.Equals(state) && anim.GetCurrentAnimatorStateInfo(layer).normalizedTime < 1f)
         {
             return true;
         }
@@ -301,7 +331,6 @@ public class Telekinesis : MonoBehaviour
         playerInput.Player.Disable();
         playerInput.Player.Fire.performed -= Fire;
         playerInput.Player.Pickup.performed -= Pickup;
-        playerInput.Player.Pickup.canceled -= PickupCancel;
     }
 
     private void OnDestroy()
@@ -309,6 +338,5 @@ public class Telekinesis : MonoBehaviour
         playerInput.Player.Disable();
         playerInput.Player.Fire.performed -= Fire;
         playerInput.Player.Pickup.performed -= Pickup;
-        playerInput.Player.Pickup.canceled -= PickupCancel;
     }
 }
