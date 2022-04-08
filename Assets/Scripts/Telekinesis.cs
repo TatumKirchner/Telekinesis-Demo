@@ -28,7 +28,11 @@ public class Telekinesis : MonoBehaviour
     [SerializeField] float maxHoldDistance;
     [Tooltip("How much force is added to the object when being fired.")]
     [SerializeField] float throwForce;
+    [Range(1f, 2f)]
+    [SerializeField] float preThrowMovementAmount;
+    float maxHoldDistanceSqrd;
 
+    Vector3[] originalHoldPositions;
     Animator animator;
     int animIdPickup;
     int animIdThrow;
@@ -47,6 +51,11 @@ public class Telekinesis : MonoBehaviour
         playerInput.Player.Enable();
         playerInput.Player.Fire.performed += Fire;
         playerInput.Player.Pickup.performed += Pickup;
+        originalHoldPositions = new Vector3[holdPositions.Length];
+        for (int i = 0; i < holdPositions.Length; i++)
+        {
+            originalHoldPositions[i] = holdPositions[i].position;
+        }
     }
 
     private void Start()
@@ -58,6 +67,7 @@ public class Telekinesis : MonoBehaviour
         animIdThrow = Animator.StringToHash("Throw");
         holdingObjectLayerId = LayerMask.NameToLayer("HoldingObject");
         pickupObjectLayerId = LayerMask.NameToLayer("Pickup");
+        maxHoldDistanceSqrd = maxHoldDistance * maxHoldDistance;
     }
 
     // When the pickup button is pressed and a pickup object is within range, add it to the list.
@@ -84,13 +94,13 @@ public class Telekinesis : MonoBehaviour
         }
     }
 
-    // when the pickup button is no longer being pressed set the animation bool to false.
+    // when the animation is close to being finished set the animation bool to false (Called by an animation event).
      public void PickupCancel()
     {
         animator.SetBool(animIdPickup, false);
     }
 
-    // Check around the player for a pickup object. If one is found return it, if not return null.
+    // Check around the player for a pickup object.
     private GameObject GetPickupObject()
     {
         Collider[] colliders = Physics.OverlapSphere(transform.position, overlapSphereRadius, pickupLayer);
@@ -131,53 +141,27 @@ public class Telekinesis : MonoBehaviour
             {
                 if (pickedUpObjects[i] != null)
                 {
-                    // When the object is close to the hold position set it up to be held.
-                    if (Vector3.Distance(pickedUpObjects[i].position, holdPositions[i].position) <= 1f)
-                    {
-                        // Freeze Y rotation makes the rotation more interesting.
-                        pickedUpObjects[i].constraints = RigidbodyConstraints.FreezeRotationY;
+                    // move the objects towards the target position.
+                    pickedUpObjects[i].velocity = 200f * Time.fixedDeltaTime *
+                            (holdPositions[i].position + new Vector3(x, y, z) - (pickedUpObjects[i].transform.position + pickedUpObjects[i].centerOfMass));
 
-                        // Increase the drag so when they are held they don't fly around.
-                        pickedUpObjects[i].drag = 5f;
-                        pickedUpObjects[i].angularDrag = 5f;
+                    // Set up the constraints and add some rotation to the objects.
+                    pickedUpObjects[i].constraints = RigidbodyConstraints.FreezeRotationY;
+                    pickedUpObjects[i].AddTorque(StationaryRotation);
 
-                        // Change the speed so they follow along more smoothly.
-                        movementSpeed = stationarySpeed;
-
-                        // Get the direction the objects need to move to and apply it.
-                        Vector3 pos = (holdPositions[i].position + new Vector3(x, y, z) - pickedUpObjects[i].position).normalized * movementSpeed;
-                        pickedUpObjects[i].AddForce(pos);
-
-                        // Add rotation to the objects to add visual interest.
-                        pickedUpObjects[i].AddTorque(StationaryRotation);
-                    }
-                    else
-                    {
-                        // Change the layer so they are not picked up by the overlap sphere.
-                        pickedUpObjects[i].gameObject.layer = holdingObjectLayerId;
-
-                        // Turn gravity off and add some drag so the objects fly to the hold position smoothly.
-                        pickedUpObjects[i].useGravity = false;
-                        pickedUpObjects[i].drag = 5f;
-                        pickedUpObjects[i].angularDrag = 5f;
-
-                        // Change the speed so they make it to their position quickly.
-                        movementSpeed = pickupObjectMovementSpeed;
-
-                        // Create their direction and apply it to their rigidbody's.
-                        Vector3 dir = (holdPositions[i].position - pickedUpObjects[i].position).normalized * movementSpeed;
-                        pickedUpObjects[i].AddForce(dir);
-                    }
+                    // Change the objects layer so it doesn't collide with the player (Set up in the collision matrix).
+                    // We also set up the layer so we don't try to pick it up again.
+                    pickedUpObjects[i].gameObject.layer = holdingObjectLayerId;
+                    pickedUpObjects[i].useGravity = false;
 
                     // If the objects get to far away from the player, drop them.
-                    if (Vector3.Distance(pickedUpObjects[i].position, holdPositions[i].position) >= maxHoldDistance)
+                    if ((pickedUpObjects[i].position - holdPositions[i].position).sqrMagnitude > maxHoldDistanceSqrd)
                     {
                         // Change their layer back to pickup so they can be picked up again.
                         pickedUpObjects[i].gameObject.layer = pickupObjectLayerId;
 
                         // Remove the constraints and resume simulating physics.
                         pickedUpObjects[i].constraints = RigidbodyConstraints.None;
-                        pickedUpObjects[i].isKinematic = false;
                         pickedUpObjects[i].useGravity = true;
 
                         // Remove it from the list.
@@ -190,6 +174,25 @@ public class Telekinesis : MonoBehaviour
 
     IEnumerator Throw()
     {
+        Vector3 cameraDir = Vector3.zero;
+        if (cameraDir == Vector3.zero)
+        {
+            cameraDir = mainCamera.transform.forward;
+        }
+
+        // move the hold positions a little bit in the opposite direction they are going to be thrown.
+        if (throwOne)
+        {
+            holdPositions[0].position -= cameraDir * preThrowMovementAmount;
+        }
+        else
+        {
+            foreach (Transform holdpos in holdPositions)
+            {
+                holdpos.position -= cameraDir * preThrowMovementAmount;
+            }
+        }
+        
         yield return new WaitForSeconds(0.70f);
         if (throwOne)
         {
@@ -250,6 +253,18 @@ public class Telekinesis : MonoBehaviour
                 }
                 // Clear the list so we can repopulate it.
                 pickedUpObjects.Clear();
+            }
+        }
+
+        if (throwOne)
+        {
+            holdPositions[0].position += cameraDir * preThrowMovementAmount;
+        }
+        else
+        {
+            foreach (Transform holdpos in holdPositions)
+            {
+                holdpos.position += cameraDir * preThrowMovementAmount;
             }
         }
 
